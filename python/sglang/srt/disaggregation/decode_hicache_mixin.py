@@ -114,8 +114,22 @@ class DecodeHiCachePreallocMixin:
         try:
             node = self.tree_cache.resolve_node_handle(prefix_match.last_host_node)
             matched_len = prefix_match.l1_prefix_len + prefix_match.l2_host_hit_length
+            # FIX(mtp-l3-offbyone): l3_storage_hit_length 是 **bigram 计数**（EAGLE/MTP 下
+            # RadixKey.is_bigram=True，len = raw - 1）。RadixKey 的契约是「N+1 个 raw token
+            # 表示 N 个 bigram」，所以按 N 个 bigram 截断 suffix 时必须多带一个边界 token；
+            # 否则 prefetch_from_storage 内部再做一次 page_aligned 会跌破一整页，
+            # 导致实际 prefetch 比 decode_prefix_len 少 page_size 个 token，
+            # 下游 load_back 判定 FAILED。非 EAGLE 时 len == raw，无需多带。
+            # is_eagle 在 UnifiedRadixCache 上挂在 tree_core，HiRadixCache 上直接挂自身
+            _tc = getattr(self.tree_cache, "tree_core", None)
+            _is_eagle = getattr(_tc, "is_eagle", None)
+            if _is_eagle is None:
+                _is_eagle = getattr(self.tree_cache, "is_eagle", False)
+            _bigram_extra = 1 if _is_eagle else 0
             suffix = req.origin_input_ids[
-                matched_len : matched_len + prefix_match.l3_storage_hit_length
+                matched_len : matched_len
+                + prefix_match.l3_storage_hit_length
+                + _bigram_extra
             ]
             last_hash = node.get_last_hash_value()
             prefix_keys = (
