@@ -2836,11 +2836,12 @@ class UnifiedRadixCache(BasePrefixCache):
         finish_event = self.cache_controller.layer_done_counter.events[
             consumer_index
         ].finish_event
-        if not finish_event.query():
-            return False
-
-        self.loading_check()
-        return True
+        # PR #29483 (unified): 纯本地轮询，**不在这里发集合通信**。
+        # 原来这里用本地 CUDA event 查询守卫 loading_check() 里的 TP all_reduce，
+        # 各 rank event 完成时刻不同 -> 集合通信错配 -> gloo abort（overview §12.12）。
+        # ack 由 check_hicache_events() -> loading_check(finish_count=...) 收割，
+        # 那条路径每轮调度都走、rank-invariant。
+        return finish_event.query()
 
     # ---- Query / Inspection APIs ----
     # These APIs exist for compatibility with other RadixTree implementations.
