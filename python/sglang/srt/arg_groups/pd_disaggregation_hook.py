@@ -84,10 +84,15 @@ def handle_pd_disaggregation(server_args: ServerArgs) -> None:
                     "with --disaggregation-transfer-backend fake"
                 )
             if cfg.speculative_algorithm is not None:
-                raise ValueError(
-                    "--disaggregation-decode-enable-radix-cache is incompatible "
-                    "with speculative decoding "
-                    f"(--speculative-algorithm {cfg.speculative_algorithm})"
+                # PATCHED(mtp-pd-radix): 原为 raise。降级成 warning 以便实验验证
+                # MTP 与 D 侧 prefix cache + HiCache 是否真有设计冲突。
+                # HiCache 侧对 MTP 的支持是齐的（cache_controller.set_draft_kv_pool /
+                # set_mtp_draft_pools），P 侧也没有这条拦截，所以怀疑它只是配置级保守。
+                logger.warning(
+                    "EXPERIMENTAL(patched): decode radix cache + speculative "
+                    "decoding (--speculative-algorithm %s) is normally rejected; "
+                    "the guard was lifted deliberately for this experiment.",
+                    cfg.speculative_algorithm,
                 )
             from sglang.srt.arg_groups.overrides import resolved_view
 
